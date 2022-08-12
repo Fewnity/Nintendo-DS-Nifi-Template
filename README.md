@@ -5,7 +5,7 @@ DS to DS Wifi (Nifi) project template
 
 ## Notes
 Improved Nifi template of [jpenny19993 dsnifi](https://github.com/jpenny1993/dsnifi).<br><br>
-The original template allow only 2 ds at the same time, and some wifi packet can be lost..<br>
+The original template allow only 2 ds at the same time.<br>
 The problem with the Nifi library is that you can't send data with 2 ds at the same time because some data will be lost.
 
 I added:
