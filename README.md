@@ -1,7 +1,9 @@
 # Nintendo DS Nifi Template
 DS to DS Wifi (Nifi) project template
 
-## Info
+<img src="https://user-images.githubusercontent.com/39272935/184286435-062d0203-4e0b-42a4-8b5b-fa4f1571697c.png" width="800">
+
+## Notes
 Improved Nifi template of [jpenny19993 dsnifi](https://github.com/jpenny1993/dsnifi).<br><br>
 The original template allow only 2 ds at the same time, and some wifi packet can be lost..<br>
 The problem with the Nifi library is that you can't send data with 2 ds at the same time because some data will be lost.
