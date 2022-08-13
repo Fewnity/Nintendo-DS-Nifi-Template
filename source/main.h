@@ -39,9 +39,9 @@ typedef struct
     char macAddress[13];   // Mac address of the client
     char sendBuffer[1024]; // Wifi write buffer of the client
     int lastMessageId;     // Last message id received by the client
-    bool skipData;         // If true, the client will skip data of the current wifi packet
-    int positionX;         // X position of the client
-    int positionY;         // Y position of the client
+    // bool skipData;         // If true, the client will skip data of the current wifi packet
+    int positionX; // X position of the client
+    int positionY; // Y position of the client
 } Client;
 
 //////All functions

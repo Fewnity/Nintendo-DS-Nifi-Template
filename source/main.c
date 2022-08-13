@@ -31,6 +31,7 @@ int timeoutCount = 0;	   // Store how many times the wifi has failed to communic
 int joinRoomTimer = WIFI_TIMEOUT; // Timer to limit the time to join a room
 bool tryJoinRoom = false;		  // Is the client trying to join a room
 bool sendPosition;				  // If true, the client will send its position to the server
+bool skipData;					  // If true, the client will skip data of the current wifi packet
 
 ////TO DO
 // Automatic channel selection (Check how many random packet are received on each channel and select the best one)
@@ -264,7 +265,7 @@ void treatData()
 				ptr = strtok(NULL, ";");
 			}
 
-			if (strcmp(params[REQUEST_TYPE_INDEX], "GAME") == 0 && !localClient->skipData) // Check if the request is about game management (refuse the request if the request was already treated)
+			if (strcmp(params[REQUEST_TYPE_INDEX], "GAME") == 0 && !skipData) // Check if the request is about game management (refuse the request if the request was already treated)
 			{
 				if (strcmp(params[REQUEST_NAME_INDEX], "POSITION") == 0) // A client is sending his position
 				{
@@ -351,13 +352,13 @@ void treatData()
 							{
 								// Clear temp buffer
 								strcpy(tempSendBuffer, "");
-								localClient->skipData = false;
+								skipData = false;
 								localClient->lastMessageId = messageId;
 							}
 							else // If the request was already read
 							{
 								// Skip the request data
-								localClient->skipData = true;
+								skipData = true;
 							}
 
 							SendDataTo(&clients[hostIndex]);
@@ -380,7 +381,7 @@ void treatData()
 				}
 				//////// Next conditions are for the host and non-host clients
 
-				if (strcmp(params[REQUEST_NAME_INDEX], "QUIT") == 0 && !localClient->skipData) // A client quit the party
+				if (strcmp(params[REQUEST_NAME_INDEX], "QUIT") == 0 && !skipData) // A client quit the party
 				{
 					int clientId;
 					sscanf(params[2], "%d", &clientId);
@@ -534,9 +535,10 @@ void resetClientValues(Client *client)
 	client->id = EMPTY;
 	if (client != localClient)
 		strcpy(client->macAddress, "");
+	else
+		skipData = false;
 	strcpy(client->sendBuffer, "");
 	client->lastMessageId = 0;
-	client->skipData = false;
 	client->positionX = client->positionY = 0;
 }
 
