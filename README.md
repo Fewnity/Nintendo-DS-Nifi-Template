@@ -13,6 +13,7 @@ I added:
 - The possibility to have more than 2 DS at the same time
 - A timeout system if the client is disconnected
 - An Id system to identify each clients
+- A system to block wifi packet if the ds receive his own packet (for emulators)
 
 There are some improvements to do but it's usable.
 

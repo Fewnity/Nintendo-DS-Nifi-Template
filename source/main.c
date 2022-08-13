@@ -1,9 +1,8 @@
 #include <nds.h>
 #include <dswifi9.h>
-
 #include <stdio.h>
-#include "main.h"
 #include <gl2d.h>
+#include "main.h"
 
 ////// Wifi variables :
 int wifiChannel = 10;
@@ -31,6 +30,7 @@ int timeoutCount = 0;	   // Store how many times the wifi has failed to communic
 // For non-host
 int joinRoomTimer = WIFI_TIMEOUT; // Timer to limit the time to join a room
 bool tryJoinRoom = false;		  // Is the client trying to join a room
+bool sendPosition;				  // If true, the client will send its position to the server
 
 ////TO DO
 // Automatic channel selection (Check how many random packet are received on each channel and select the best one)
@@ -66,11 +66,7 @@ int main(void)
 			// Store stylus location
 			localClient->positionX = touchXY.px;
 			localClient->positionY = touchXY.py;
-			// Ask for sending data to all clients
-			for (int i = 1; i < MAX_CLIENT; i++)
-			{
-				clients[i].sendPosition = true;
-			}
+			sendPosition = true;
 		}
 
 		// Check for action : join room, create room
@@ -82,7 +78,9 @@ int main(void)
 		if (keysdown & KEY_DOWN)
 		{
 			tryJoinRoom = true;
+			resetNifiValues();
 		}
+
 		// If the client is trying to join a room, scan for a room
 		if (tryJoinRoom)
 		{
@@ -95,6 +93,7 @@ int main(void)
 			}
 		}
 
+		// Check if the local client has lost the connection with the host
 		if (localClient->id != EMPTY && !isHost)
 		{
 			lastCommunication++;
@@ -107,9 +106,10 @@ int main(void)
 			}
 		}
 
-		// Draw client stylus position
+		// Start drawing 2D
 		glBegin2D();
 
+		// Draw client stylus position
 		for (int i = 0; i < MAX_CLIENT; i++)
 		{
 			if (clients[i].id != EMPTY)
@@ -128,6 +128,13 @@ int main(void)
 
 		glEnd2D();
 		glFlush(0);
+
+		if (sendPosition)
+		{
+			shareRequest(localClient, POSITION);
+			sendPosition = false;
+		}
+
 		swiWaitForVBlank();
 	}
 }
@@ -159,15 +166,15 @@ void SendWirelessData(unsigned short *buffer, int length)
 {
 	if (Wifi_RawTxFrame(length, 0x0014, buffer) != 0)
 	{
-		iprintf("Error calling RawTxFrame\n");
+		printf("Error calling RawTxFrame\n");
 	}
 }
 
 /**
- * @brief Init the Nifi system
+ * @brief Reset variable used by the the Wifi to avoid wrong values when reconnecting
  *
  */
-void nifiInit()
+void resetNifiValues()
 {
 	// Reset clients data
 	for (int i = 0; i < MAX_CLIENT; i++)
@@ -183,8 +190,17 @@ void nifiInit()
 	lastCommunication = 0;
 	hostIndex = EMPTY;
 	WIFI_ReceivedDataLength = 0;
+}
 
-	iprintf("\nInit NiFi...\n");
+/**
+ * @brief Init the Nifi system
+ *
+ */
+void nifiInit()
+{
+	resetNifiValues();
+
+	printf("\nInit NiFi...\n");
 
 	// Changes how packets are handled
 	Wifi_SetRawPacketMode(PACKET_MODE_NIFI);
@@ -192,7 +208,7 @@ void nifiInit()
 	// Init Wifi without automatic settings
 	Wifi_InitDefault(false);
 
-	// Enable wireless
+	// Enable Wifi
 	Wifi_EnableWifi();
 
 	// Configure custom packet handler for when
@@ -220,6 +236,8 @@ void treatData()
 {
 	// Get data lenght
 	int recvd_len = strlen(wirelessData);
+
+	// printf("%s\n", wirelessData);
 
 	// Check if the packet is valid
 	if (WIFI_ReceivedDataLength == recvd_len + 1)
@@ -250,6 +268,7 @@ void treatData()
 			{
 				if (strcmp(params[REQUEST_NAME_INDEX], "POSITION") == 0) // A client is sending his position
 				{
+					// printf("%s\n", wirelessData);
 					int clientId, destinatorId;
 					// Get the client destinator id
 					sscanf(params[3], "%d", &destinatorId);
@@ -268,22 +287,7 @@ void treatData()
 							sscanf(params[5], "%d", &client->positionY);
 							printf("%s%d POSITION : %d %d%s\n", GREEN, clientId, client->positionX, client->positionY, WHITE);
 
-							// If the local client is the host
-							if (isHost)
-							{
-								// Send the data to all clients
-								for (int clientIndex = 1; clientIndex < MAX_CLIENT; clientIndex++)
-								{
-									Client *clientToUpdate = &clients[clientIndex];
-									// Avoid sending the request to the current treated client
-									if (clientId != clientToUpdate->id && clientToUpdate->id != EMPTY)
-									{
-										char buffer[28];
-										sprintf(buffer, "{GAME;POSITION;%d;%d;%d;%d}", clientId, clientToUpdate->id, client->positionX, client->positionY);
-										AddDataTo(clientIndex, buffer);
-									}
-								}
-							}
+							shareRequest(client, POSITION);
 						}
 					}
 				}
@@ -334,11 +338,11 @@ void treatData()
 					{
 						int clientId;
 						sscanf(params[2], "%d", &clientId);
-						lastCommunication = 0;
 						// If the host wants to communicate with the local client
 
 						if (localClient->id == clientId)
 						{
+							lastCommunication = 0;
 							int messageId;
 							sscanf(params[3], "%d", &messageId);
 
@@ -356,10 +360,10 @@ void treatData()
 								localClient->skipData = true;
 							}
 
-							SendDataTo(hostIndex);
+							SendDataTo(&clients[hostIndex]);
 						}
 					}
-					else if (strcmp(params[REQUEST_NAME_INDEX], "ADDRANGE") == 0) // Add multiples non local players
+					else if (strcmp(params[REQUEST_NAME_INDEX], "ADDCLIENTS") == 0) // Add multiples non local players
 					{
 						int destinatorId;
 						sscanf(params[2], "%d", &destinatorId);
@@ -374,7 +378,7 @@ void treatData()
 						}
 					}
 				}
-				// For the host and non-host clients
+				//////// Next conditions are for the host and non-host clients
 
 				if (strcmp(params[REQUEST_NAME_INDEX], "QUIT") == 0 && !localClient->skipData) // A client quit the party
 				{
@@ -389,9 +393,8 @@ void treatData()
 						if (client != NULL)
 						{
 							removeClient(client);
+							printf("%d HAS LEFT THE ROOM\n", clientId);
 						}
-
-						printf("%d HAS LEFT THE ROOM\n", clientId);
 					}
 				}
 			}
@@ -406,6 +409,55 @@ void treatData()
 			strcpy(Values, TempValues);
 		}
 	}
+}
+
+/**
+ * @brief Share a request to clients
+ *
+ * @param clientSender
+ * @param requestType
+ */
+void shareRequest(Client *clientSender, enum RequestType requestType)
+{
+	// If the local client is the host
+	if (isHost)
+	{
+		// Send the data to all clients
+		for (int clientIndex = 1; clientIndex < MAX_CLIENT; clientIndex++)
+		{
+			Client *clientToUpdate = &clients[clientIndex];
+			// Avoid sending the request to the current treated client
+			if (clientSender->id != clientToUpdate->id && clientToUpdate->id != EMPTY)
+			{
+				createRequest(clientSender, clientToUpdate, requestType);
+			}
+		}
+	}
+	else if (clientSender == localClient) // Share the request to the host only
+	{
+		Client *clientToUpdate = &clients[hostIndex];
+		createRequest(clientSender, clientToUpdate, requestType);
+	}
+}
+
+/**
+ * @brief Create a request and add it to the client to update's send buffer
+ *
+ * @param clientSender Client pointer to get data from
+ * @param clientToUpdate Client pointer to send data to
+ * @param requestType Request type (See RequestType enum in main.h)
+ */
+void createRequest(Client *clientSender, Client *clientToUpdate, enum RequestType requestType)
+{
+	char buffer[28];
+	switch (requestType)
+	{
+	case POSITION:
+		sprintf(buffer, "{GAME;POSITION;%d;%d;%d;%d}", clientSender->id, clientToUpdate->id, clientSender->positionX, clientSender->positionY);
+		break;
+	}
+
+	AddDataTo(clientToUpdate, buffer);
 }
 
 /**
@@ -435,6 +487,7 @@ void createRoom()
 	// Is the client is not already a host
 	if (!isHost)
 	{
+		resetNifiValues();
 		// Create a room
 		isHost = true;
 		idCount = 0;
@@ -447,7 +500,7 @@ void createRoom()
 /**
  * @brief Remove a client
  *
- * @param index Client's index to remove
+ * @param client Client pointer to remove
  */
 void removeClient(Client *client)
 {
@@ -457,11 +510,12 @@ void removeClient(Client *client)
 		{
 			for (int i = 1; i < MAX_CLIENT; i++)
 			{
+				// Send a request to all clients to remove the client from all other clients (the removed client is not called)
 				if (&clients[i] != client && clients[i].id != EMPTY)
 				{
 					char buffer[18];
 					sprintf(buffer, "{ROOM;QUIT;%d;%d}", client->id, clients[i].id);
-					AddDataTo(i, buffer);
+					AddDataTo(&clients[i], buffer);
 				}
 			}
 		}
@@ -473,15 +527,17 @@ void removeClient(Client *client)
 /**
  * @brief Reset client values
  *
- * @param client pointer to reset
+ * @param client Client pointer to reset
  */
 void resetClientValues(Client *client)
 {
 	client->id = EMPTY;
-	strcpy(client->macAddress, "");
+	if (client != localClient)
+		strcpy(client->macAddress, "");
 	strcpy(client->sendBuffer, "");
 	client->lastMessageId = 0;
 	client->skipData = false;
+	client->positionX = client->positionY = 0;
 }
 
 /**
@@ -523,6 +579,7 @@ void addClient(int id, bool addHost)
 	if (!macAlreadyExists && !idAlreadyExists)
 	{
 		int addedClientIndex = EMPTY;
+		// Try to find a free client slot
 		for (int i = 1; i < MAX_CLIENT; i++)
 		{
 			if (clients[i].id == EMPTY)
@@ -555,23 +612,25 @@ void addClient(int id, bool addHost)
 		if (addedClientIndex != EMPTY && isHost)
 		{
 			// Send the client his id
-			char buffer[100];
-			sprintf(buffer, "{ROOM;CONFIRM_JOIN;%s;%d;%d}", tempMacAddress, localClient->id, clients[addedClientIndex].id);
+			char newClientBuffer[100];
+			sprintf(newClientBuffer, "{ROOM;CONFIRM_JOIN;%s;%d;%d}", tempMacAddress, localClient->id, clients[addedClientIndex].id);
 			// Send the client all the other clients ids
-			sprintf(buffer + strlen(buffer), "{ROOM;ADDRANGE;%d", clients[addedClientIndex].id);
+			sprintf(newClientBuffer + strlen(newClientBuffer), "{ROOM;ADDCLIENTS;%d", clients[addedClientIndex].id);
 			// Send the client id to all the other clients
 			for (int i = 1; i < MAX_CLIENT; i++)
 			{
 				if (clients[i].id != EMPTY && i != addedClientIndex)
 				{
-					sprintf(buffer + strlen(buffer), ";%d", clients[i].id);
-					char buffer2[22];
-					sprintf(buffer2, "{ROOM;ADDRANGE;%d;%d}", clients[i].id, clients[addedClientIndex].id);
-					AddDataTo(i, buffer2);
+					// Send the client all the other clients ids
+					sprintf(newClientBuffer + strlen(newClientBuffer), ";%d", clients[i].id);
+					// Send the client id to all the other clients
+					char bufferForOtherClients[22];
+					sprintf(bufferForOtherClients, "{ROOM;ADDCLIENTS;%d;%d}", clients[i].id, clients[addedClientIndex].id);
+					AddDataTo(&clients[i], bufferForOtherClients);
 				}
 			}
-			sprintf(buffer + strlen(buffer), "}");
-			AddDataTo(addedClientIndex, buffer);
+			sprintf(newClientBuffer + strlen(newClientBuffer), "}");
+			AddDataTo(&clients[addedClientIndex], newClientBuffer);
 		}
 	}
 }
@@ -582,7 +641,6 @@ void addClient(int id, bool addHost)
  */
 void scanForRoom()
 {
-	//  Join a room
 	isHost = false;
 
 	char buffer[25];
@@ -607,12 +665,12 @@ void communicateWithNextClient()
 
 	if (clients[speakTo].id != EMPTY)
 	{
-		AddDataTo(speakTo, "{}"); // TO REMOVE FIX : Data can't be sent if the buffer is empty
-		SendDataTo(speakTo);
+		// AddDataTo(&clients[speakTo], "{}"); // TO REMOVE FIX : Data can't be sent if the buffer is empty
+		SendDataTo(&clients[speakTo]);
 	}
 	else
 	{
-		lastCommunication = WIFI_TIMEOUT;
+		lastCommunication = WIFI_TIMEOUT - 1;
 	}
 }
 
@@ -622,81 +680,77 @@ void communicateWithNextClient()
  */
 void managerServer()
 {
+	// Only the host can manage the server
 	if (isHost)
 	{
+		// Increase the time to check timeout
 		lastCommunication++;
-		if (lastCommunication == WIFI_TIMEOUT + 1)
-		{
-			communicateWithNextClient();
-		}
-
 		if (lastCommunication == WIFI_TIMEOUT)
 		{
-			if (speakTo != 0 && clients[speakTo].id != EMPTY)
+			// If the clients is in the party (id not empty)
+			if (clients[speakTo].id != EMPTY)
 			{
+				// If the timeout max count isn't reached, retry communication
 				if (timeoutCount <= MAX_TIMEOUT_RETRY)
 				{
-					// Restart
 					timeoutCount++;
 					lastCommunication = 0;
 
-					SendDataTo(speakTo);
+					SendDataTo(&clients[speakTo]);
 				}
 				else
 				{
+					// Remove the client
 					removeClient(&clients[speakTo]);
 					communicateWithNextClient();
 				}
+			}
+			else
+			{
+				communicateWithNextClient();
 			}
 		}
 	}
 }
 
-void AddDataTo(int playerIndex, const char *data)
+/**
+ * @brief Add data in the client's send buffer to send it to the client
+ *
+ * @param client client to add data to
+ * @param data data to add
+ */
+void AddDataTo(Client *client, const char *data)
 {
-	if (playerIndex != EMPTY)
-	{
-		if (clients[playerIndex].id != EMPTY)
-			sprintf(clients[playerIndex].sendBuffer + strlen(clients[playerIndex].sendBuffer), "%s", data);
-	}
-	else
-	{
-		for (int i = 1; i < MAX_CLIENT; i++)
-		{
-			if (clients[i].id != EMPTY)
-				sprintf(clients[i].sendBuffer + strlen(clients[i].sendBuffer), "%s", data);
-		}
-	}
+	if (client != NULL && client->id != EMPTY)
+		sprintf(client->sendBuffer + strlen(client->sendBuffer), "%s", data);
 }
 
-void SendDataTo(int playerIndex)
+/**
+ * @brief Send data to a client with Nifi
+ *
+ * @param client client to send data to
+ */
+void SendDataTo(Client *client)
 {
-	char finalBuffer[1024] = "";
-	if (isHost)
-	{
-		if (timeoutCount == 0)
-		{
-			clients[playerIndex].lastMessageId++;
-		}
-		sprintf(finalBuffer, "{ROOM;WANTSPEAK;%d;%d}", clients[playerIndex].id, clients[playerIndex].lastMessageId);
-	}
-	else
-		sprintf(finalBuffer, "{ROOM;CONFIRM_LISTEN;%d}", localClient->id);
-
 	// If the buffer is not empty, copy the buffer to a new one and clear the buffer
-	if (timeoutCount == 0 && (strlen(clients[playerIndex].sendBuffer) != 0 || strlen(tempSendBuffer) == 0))
+	if (timeoutCount == 0)
 	{
-		strcpy(tempSendBuffer, "");
-		sprintf(tempSendBuffer + strlen(tempSendBuffer), "%s", clients[playerIndex].sendBuffer);
-		if (clients[playerIndex].sendPosition)
+		if (isHost)
 		{
-			sprintf(tempSendBuffer + strlen(tempSendBuffer), "{GAME;POSITION;%d;%d;%d;%d}", localClient->id, clients[playerIndex].id, localClient->positionX, localClient->positionY);
-			clients[playerIndex].sendPosition = false;
-		}
-		strcpy(clients[playerIndex].sendBuffer, "");
-	}
-	if (strlen(tempSendBuffer) != 0)
-		sprintf(finalBuffer + strlen(finalBuffer), "%s", tempSendBuffer);
+			client->lastMessageId++;
 
-	SendWirelessData((unsigned short *)finalBuffer, strlen(finalBuffer) + 1);
+			// Ask to client to communicate
+			sprintf(tempSendBuffer, "{ROOM;WANTSPEAK;%d;%d}", client->id, client->lastMessageId);
+		}
+		else // Tell the host that the local client has received the message
+			sprintf(tempSendBuffer, "{ROOM;CONFIRM_LISTEN;%d}", localClient->id);
+
+		sprintf(tempSendBuffer + strlen(tempSendBuffer), "%s", client->sendBuffer);
+
+		// Clear the client's send buffer
+		strcpy(client->sendBuffer, "");
+	}
+
+	// Send data
+	SendWirelessData((unsigned short *)tempSendBuffer, strlen(tempSendBuffer) + 1);
 }
