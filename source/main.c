@@ -450,7 +450,8 @@ void shareRequest(Client *clientSender, enum RequestType requestType)
  */
 void createRequest(Client *clientSender, Client *clientToUpdate, enum RequestType requestType)
 {
-	char buffer[28];
+	// (Increase the buffer size if needed)
+	char buffer[28] = "";
 	switch (requestType)
 	{
 	case POSITION:
@@ -626,7 +627,7 @@ void addClient(int id, bool addHost)
 					// Send the client all the other clients ids
 					sprintf(newClientBuffer + strlen(newClientBuffer), ";%d", clients[i].id);
 					// Send the client id to all the other clients
-					char bufferForOtherClients[22];
+					char bufferForOtherClients[24];
 					sprintf(bufferForOtherClients, "{ROOM;ADDCLIENTS;%d;%d}", clients[i].id, clients[addedClientIndex].id);
 					AddDataTo(&clients[i], bufferForOtherClients);
 				}
@@ -723,7 +724,7 @@ void managerServer()
  */
 void AddDataTo(Client *client, const char *data)
 {
-	if (client != NULL && client->id != EMPTY)
+	if (client != NULL && client->id != EMPTY && strlen(data) != 0)
 		sprintf(client->sendBuffer + strlen(client->sendBuffer), "%s", data);
 }
 
