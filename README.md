@@ -7,6 +7,7 @@ DS to DS Wifi (Nifi) project template
 Improved Nifi template of [jpenny19993 dsnifi](https://github.com/jpenny1993/dsnifi).<br><br>
 The original template allow only 2 ds at the same time.<br>
 The problem with the Nifi library is that you can't send data with 2 ds at the same time because some data will be lost.
+The precompiled library in the libs folder is [Fewnity/dswifi](https://github.com/Fewnity/dswifi)
 
 I added:
 - A callback system to prevent packet loss
@@ -19,12 +20,7 @@ There are some improvements to do but it's usable.
 
 ## Prerequisites
 
-1. Install [devkitpro](https://devkitpro.org/wiki/Getting_Started) v3.0.3 (latest)
-1. Clone [Fewnity/dswifi](https://github.com/Fewnity/dswifi)
-1. put the dswifi folder in the devkitPro root folder
-1. Open a terminal in the root of the repo
-1. Run the `make` command to build the dswifi library
-1. Run the `make install` command to replace the stock dswifi library provided with devkitpro OR copy the lib & include folders of dswifi into libnds folder of devkitPro
+1. [Devkitpro](https://devkitpro.org/wiki/Getting_Started) v3.0.3 (latest)
 
 ## Build
 
